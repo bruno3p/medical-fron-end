@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Stethoscope, HeartPulse, Activity } from 'lucide-react';
 import './Auth.css';
 import bgImage from '../assets/login-bg.png';
@@ -11,10 +11,11 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [specialty, setSpecialty] = useState('');
 
+  const navigate = useNavigate();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Register attempt with:', { role, name, email, password, specialty });
-    alert('Funcionalidade de cadastro (Back-end) em construção!');
+    navigate('/app');
   };
 
   return (
