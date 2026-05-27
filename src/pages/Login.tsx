@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, HeartPulse } from 'lucide-react';
 import './Auth.css';
 import bgImage from '../assets/login-bg.png';
@@ -8,10 +8,11 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  const navigate = useNavigate();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login attempt with:', { email, password });
-    alert('Funcionalidade de login (Back-end) em construção!');
+    navigate('/app');
   };
 
   return (
