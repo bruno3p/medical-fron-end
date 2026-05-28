@@ -1,21 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockDoctors, mockAppointments, mockDoctorSettings } from '../../mocks/data';
-import type { Appointment } from '../../mocks/data';
-import { ArrowLeft, Calendar, Clock, CheckCircle, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { DoctorService } from '../../services/DoctorService';
+import { DoctorSettingsService } from '../../services/DoctorSettingsService';
+import { AppointmentService } from '../../services/AppointmentService';
+import type { Appointment, Doctor, DoctorSettings } from '../../mocks/data';
+import { ArrowLeft, Calendar, Clock, CheckCircle, ChevronLeft, ChevronRight, X, Loader2 } from 'lucide-react';
 import './DoctorSchedule.css';
 
 export default function DoctorSchedule() {
   const { id } = useParams<{ id: string }>();
   const doctorId = Number(id);
-  const doctor = mockDoctors.find(d => d.id === doctorId);
-  const docSettings = mockDoctorSettings.find(s => s.doctorId === doctorId);
+  
+  const loggedPatientId = Number(localStorage.getItem('loggedUserId')) || 101;
 
-  const loggedPatientId = 101;
+  const [loading, setLoading] = useState(true);
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [docSettings, setDocSettings] = useState<DoctorSettings | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  const [appointments, setAppointments] = useState<Appointment[]>(
-    mockAppointments.filter(a => a.doctor_id === doctorId)
-  );
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [doc, set, apts] = await Promise.all([
+          DoctorService.getById(doctorId),
+          DoctorSettingsService.getByDoctor(doctorId).catch(() => null),
+          AppointmentService.getByDoctor(doctorId)
+        ]);
+        setDoctor(doc);
+        setDocSettings(set);
+        setAppointments(apts);
+      } catch (err) {
+        console.error("Erro ao carregar agenda", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (doctorId) fetchData();
+  }, [doctorId]);
 
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -24,6 +46,10 @@ export default function DoctorSchedule() {
 
   // Calendar State
   const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  if (loading) {
+    return <div className="flex-center" style={{ height: '50vh' }}><Loader2 className="icon-spin icon-primary" size={40} /></div>;
+  }
 
   if (!doctor || !docSettings) {
     return <div>Médico ou configurações não encontradas.</div>;
@@ -107,20 +133,21 @@ export default function DoctorSchedule() {
     }
   };
 
-  const confirmAppointment = () => {
-    if (selectedDate && selectedTime) {
-      const newApt: Appointment = {
-        id: Date.now(),
-        doctor_id: doctorId,
-        patient_id: loggedPatientId,
-        date: selectedDate,
-        time: selectedTime,
-        status: 'booked'
-      };
-      setAppointments([...appointments, newApt]);
-      setShowConfirmModal(false);
+  const confirmAppointment = async () => {
+    if (selectedDate && selectedTime && doctor) {
+      try {
+        const newApt = await AppointmentService.create({
+          doctor_id: doctorId,
+          patient_id: loggedPatientId,
+          date: selectedDate,
+          time: selectedTime,
+          status: 'booked'
+        });
+        
+        setAppointments([...appointments, newApt]);
+        setShowConfirmModal(false);
 
-      const emailMsg = `
+        const emailMsg = `
 📧 E-MAIL ENVIADO COM SUCESSO!
 ======================================
 Para: paciente@email.com
@@ -132,9 +159,13 @@ Data: ${selectedDate.split('-').reverse().join('/')}
 Horário: ${selectedTime}
 Local: Clínica MediCare - Av. Principal, 1000.
 ======================================
-      `;
-      console.log(emailMsg);
-      alert('Consulta confirmada com sucesso! Verifique o console (F12) para ver o e-mail simulado.');
+        `;
+        console.log(emailMsg);
+        alert('Consulta confirmada com sucesso! Verifique o console (F12) para ver o e-mail simulado.');
+      } catch (err) {
+        alert('Erro ao confirmar a consulta no servidor.');
+        console.error(err);
+      }
     }
   };
 

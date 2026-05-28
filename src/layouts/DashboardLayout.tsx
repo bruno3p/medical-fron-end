@@ -1,12 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, User, LogOut, HeartPulse, ShieldAlert, Calendar, Settings, Menu, X, FileText } from 'lucide-react';
+import { Home, User, LogOut, HeartPulse, Calendar, Settings, Menu, X, FileText } from 'lucide-react';
 import './DashboardLayout.css';
 import type { Role } from '../mocks/data';
 
-// Componente Wrapper para simular estado de autenticação
+// Componente Wrapper
 export default function DashboardLayout() {
   const [role, setRole] = useState<Role>('patient');
+
+  useEffect(() => {
+    const savedRole = localStorage.getItem('userRole') as Role;
+    if (savedRole) {
+      setRole(savedRole);
+    }
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -14,6 +21,8 @@ export default function DashboardLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   const handleLogout = () => {
+    localStorage.removeItem('loggedUserId');
+    localStorage.removeItem('userRole');
     navigate('/');
   };
 
@@ -71,19 +80,6 @@ export default function DashboardLayout() {
         </nav>
 
         <div className="sidebar-footer">
-          {/* FAKE TOGGLER PARA TESTES */}
-          <div className="role-toggler">
-            <span className="toggler-label"><ShieldAlert size={16} /> Teste Visual:</span>
-            <select 
-              className="toggler-select"
-              value={role} 
-              onChange={(e) => setRole(e.target.value as Role)}
-            >
-              <option value="patient">Ver como Paciente</option>
-              <option value="doctor">Ver como Médico</option>
-            </select>
-          </div>
-
           <button className="logout-btn" onClick={handleLogout}>
             <LogOut size={20} />
             <span>Sair</span>

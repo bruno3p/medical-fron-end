@@ -1,16 +1,16 @@
-import { useState } from 'react';
-import { mockDoctorSettings, mockDoctors } from '../../mocks/data';
-import type { DoctorSettings } from '../../mocks/data';
-import { Save, Clock, CalendarDays, Coffee } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { DoctorService } from '../../services/DoctorService';
+import { DoctorSettingsService } from '../../services/DoctorSettingsService';
+import type { DoctorSettings, Doctor } from '../../mocks/data';
+import { Save, Clock, CalendarDays, Coffee, Loader2 } from 'lucide-react';
 import './DoctorAgendaSetup.css';
 
 export default function DoctorAgendaSetup() {
-  // Simular que o doutor 1 está logado
-  const loggedDoctorId = 1;
-  const doctor = mockDoctors.find(d => d.id === loggedDoctorId);
+  const loggedDoctorId = Number(localStorage.getItem('loggedUserId')) || 1;
   
-  // Buscar config inicial
-  const initialConfig = mockDoctorSettings.find(s => s.doctorId === loggedDoctorId) || {
+  const [loading, setLoading] = useState(true);
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [settings, setSettings] = useState<DoctorSettings>({
     doctorId: loggedDoctorId,
     workDays: [1, 2, 3, 4, 5],
     startTime: '08:00',
@@ -18,9 +18,26 @@ export default function DoctorAgendaSetup() {
     hasLunchBreak: true,
     lunchStart: '12:00',
     lunchEnd: '14:00'
-  };
+  });
 
-  const [settings, setSettings] = useState<DoctorSettings>(initialConfig);
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [doc, set] = await Promise.all([
+          DoctorService.getById(loggedDoctorId),
+          DoctorSettingsService.getByDoctor(loggedDoctorId).catch(() => null)
+        ]);
+        if (doc) setDoctor(doc);
+        if (set) setSettings(set);
+      } catch (err) {
+        console.error("Erro ao carregar configurações", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [loggedDoctorId]);
 
   const daysOfWeek = [
     { id: 0, name: 'Domingo' },
@@ -41,12 +58,20 @@ export default function DoctorAgendaSetup() {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simular salvamento
-    alert('Configurações de agenda salvas com sucesso!');
-    // Aqui no mundo real chamaríamos uma API
+    try {
+      await DoctorSettingsService.save(settings);
+      alert('Configurações de agenda salvas com sucesso!');
+    } catch (err) {
+      alert('Erro ao salvar configurações no servidor.');
+      console.error(err);
+    }
   };
+
+  if (loading) {
+    return <div className="flex-center" style={{ height: '50vh' }}><Loader2 className="icon-spin icon-primary" size={40} /></div>;
+  }
 
   if (!doctor) return <div>Médico não encontrado.</div>;
 

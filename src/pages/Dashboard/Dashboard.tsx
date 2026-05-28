@@ -1,8 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
-import { mockDoctors, mockPatients, mockAppointments, mockReports, mockDoctorSettings } from '../../mocks/data';
-import type { Role, Doctor } from '../../mocks/data';
-import { Users, Stethoscope, ChevronRight, Search, Filter, ChevronDown, Heart } from 'lucide-react';
+import { PatientService } from '../../services/PatientService';
+import { DoctorService } from '../../services/DoctorService';
+import { ReportService } from '../../services/ReportService';
+import { AppointmentService } from '../../services/AppointmentService';
+import { DoctorSettingsService } from '../../services/DoctorSettingsService';
+import type { Role, Doctor, Patient, Appointment, MedicalReport, DoctorSettings } from '../../mocks/data';
+import { Users, Stethoscope, ChevronRight, Search, Filter, ChevronDown, Heart, Loader2 } from 'lucide-react';
 import './Dashboard.css';
 
 interface DashboardContext {
@@ -79,8 +83,14 @@ function SearchSelect({
 export default function Dashboard() {
   const { role } = useOutletContext<DashboardContext>();
 
-  // Mock de usuário logado (Paciente 101)
-  const loggedPatientId = 101;
+  const loggedUserId = Number(localStorage.getItem('loggedUserId')) || 101; // ID fallback
+
+  const [loading, setLoading] = useState(true);
+  const [apiDoctors, setApiDoctors] = useState<Doctor[]>([]);
+  const [apiPatients, setApiPatients] = useState<Patient[]>([]);
+  const [apiAppointments, setApiAppointments] = useState<Appointment[]>([]);
+  const [apiReports, setApiReports] = useState<MedicalReport[]>([]);
+  const [apiSettings, setApiSettings] = useState<DoctorSettings[]>([]);
 
   // Estados de Filtro e Favoritos
   const [searchName, setSearchName] = useState('');
@@ -88,35 +98,69 @@ export default function Dashboard() {
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [favoriteDoctors, setFavoriteDoctors] = useState<Set<number>>(new Set());
 
-  // Função para favoritar/desfavoritar
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        if (role === 'patient') {
+          const docs = await DoctorService.getAll();
+          setApiDoctors(docs);
+          
+          const reps = await ReportService.getByPatient(loggedUserId);
+          setApiReports(reps);
+          
+          const allApts: Appointment[] = [];
+          const allSets: DoctorSettings[] = [];
+          
+          await Promise.all(docs.map(async (doc) => {
+            try {
+               const docApts = await AppointmentService.getByDoctor(doc.id);
+               allApts.push(...docApts);
+            } catch (e) {}
+            try {
+               const docSet = await DoctorSettingsService.getByDoctor(doc.id);
+               if (docSet) allSets.push(docSet);
+            } catch (e) {}
+          }));
+          
+          setApiAppointments(allApts);
+          setApiSettings(allSets);
+        } else {
+           const pts = await PatientService.getAll();
+           setApiPatients(pts);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar dados", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [role, loggedUserId]);
+
   const toggleFavorite = (e: React.MouseEvent, doctorId: number) => {
-    e.preventDefault(); // Evita que o click no link dispare
+    e.preventDefault();
     const newFavorites = new Set(favoriteDoctors);
-    if (newFavorites.has(doctorId)) {
-      newFavorites.delete(doctorId);
-    } else {
-      newFavorites.add(doctorId);
-    }
+    if (newFavorites.has(doctorId)) newFavorites.delete(doctorId);
+    else newFavorites.add(doctorId);
     setFavoriteDoctors(newFavorites);
   };
 
-  // Lógica de Separação de Médicos (Para o Paciente)
   const { myDoctors, otherDoctors } = useMemo(() => {
     const linkedDoctorIds = new Set<number>();
     
-    mockAppointments.forEach(apt => {
-      if (apt.patient_id === loggedPatientId) linkedDoctorIds.add(apt.doctor_id);
+    apiAppointments.forEach(apt => {
+      if (apt.patient_id === loggedUserId) linkedDoctorIds.add(apt.doctor_id);
     });
     
-    mockReports.forEach(rep => {
-      if (rep.patient_id === loggedPatientId && rep.doctor_id) linkedDoctorIds.add(rep.doctor_id);
+    apiReports.forEach(rep => {
+      if (rep.patient_id === loggedUserId && rep.doctor_id) linkedDoctorIds.add(rep.doctor_id);
     });
 
     const mine: Doctor[] = [];
     const others: Doctor[] = [];
 
-    mockDoctors.forEach(doc => {
-      // É considerado "Meu Médico" se tiver vínculo de dados OU se foi favoritado
+    apiDoctors.forEach(doc => {
       if (linkedDoctorIds.has(doc.id) || favoriteDoctors.has(doc.id)) {
         mine.push(doc);
       } else {
@@ -125,24 +169,27 @@ export default function Dashboard() {
     });
 
     return { myDoctors: mine, otherDoctors: others };
-  }, [favoriteDoctors]);
+  }, [apiDoctors, apiAppointments, apiReports, favoriteDoctors, loggedUserId]);
 
-  // Lógica de Filtro dos "Outros Médicos"
   const filteredOtherDoctors = useMemo(() => {
     return otherDoctors.filter(doc => {
       if (searchName && !doc.name.toLowerCase().includes(searchName.toLowerCase())) return false;
       if (searchSpecialty && !doc.specialty.toLowerCase().includes(searchSpecialty.toLowerCase())) return false;
       
       if (onlyAvailable) {
-        const settings = mockDoctorSettings.find(s => s.doctorId === doc.id);
+        const settings = apiSettings.find(s => s.doctorId === doc.id);
         if (!settings || settings.workDays.length === 0) return false;
       }
       return true;
     });
-  }, [otherDoctors, searchName, searchSpecialty, onlyAvailable]);
+  }, [otherDoctors, searchName, searchSpecialty, onlyAvailable, apiSettings]);
 
   const availableNames = Array.from(new Set(otherDoctors.map(d => d.name)));
   const availableSpecialties = Array.from(new Set(otherDoctors.map(d => d.specialty)));
+
+  if (loading) {
+    return <div className="flex-center" style={{ height: '50vh' }}><Loader2 className="icon-spin icon-primary" size={40} /></div>;
+  }
 
   return (
     <div className="dashboard-container">
@@ -264,7 +311,7 @@ export default function Dashboard() {
           </div>
 
           <div className="patient-list">
-            {mockPatients.map(patient => (
+            {apiPatients.map(patient => (
               <Link to={`/app/patient/${patient.id}`} key={patient.id} className="patient-list-item">
                 <div className="patient-info">
                   <img src={patient.avatar} alt={patient.name} className="avatar-sm" />

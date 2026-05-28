@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockPatients, mockReports, mockDoctors } from '../../mocks/data';
-import type { MedicalReport } from '../../mocks/data';
+import { PatientService } from '../../services/PatientService';
+import { ReportService } from '../../services/ReportService';
+import { DoctorService } from '../../services/DoctorService';
+import type { MedicalReport, Patient, Doctor } from '../../mocks/data';
 import { ArrowLeft, FileText, PlusCircle, Activity, Sparkles, UploadCloud, X, Loader2 } from 'lucide-react';
 import './PatientDetails.css';
 
@@ -9,17 +11,43 @@ export default function PatientDetails() {
   const { id } = useParams<{ id: string }>();
   const patientId = Number(id);
   
-  const patient = mockPatients.find(p => p.id === patientId);
-  const initialReports = mockReports.filter(r => r.patient_id === patientId);
+  const [loading, setLoading] = useState(true);
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [reports, setReports] = useState<(MedicalReport & { doctorObj?: Doctor })[]>([]);
+  const [attendingDoctors, setAttendingDoctors] = useState<Doctor[]>([]);
   
-  const [reports, setReports] = useState<MedicalReport[]>(initialReports);
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [pat, reps, docs] = await Promise.all([
+          PatientService.getById(patientId),
+          ReportService.getByPatient(patientId),
+          DoctorService.getAll()
+        ]);
+        
+        setPatient(pat);
+        
+        const doctorIds = Array.from(new Set(reps.map(r => r.doctor_id).filter(Boolean)));
+        setAttendingDoctors(docs.filter(d => doctorIds.includes(d.id)));
+        
+        setReports(reps.map(r => ({ ...r, doctorObj: docs.find(d => d.id === r.doctor_id) })));
+      } catch (err) {
+        console.error("Erro ao carregar detalhes", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (patientId) fetchData();
+  }, [patientId]);
+
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'extracting' | 'analyzing' | 'done'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // Encontrar outros médicos que atenderam esse paciente
-  const doctorIds = Array.from(new Set(reports.map(r => r.doctor_id).filter(Boolean)));
-  const attendingDoctors = mockDoctors.filter(d => doctorIds.includes(d.id));
+  if (loading) {
+    return <div className="flex-center" style={{ height: '50vh' }}><Loader2 className="icon-spin icon-primary" size={40} /></div>;
+  }
 
   if (!patient) {
     return <div>Paciente não encontrado.</div>;
@@ -139,7 +167,7 @@ export default function PatientDetails() {
               <p className="text-muted">Nenhum laudo encontrado para este paciente.</p>
             ) : (
               reports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(report => {
-                const doc = mockDoctors.find(d => d.id === report.doctor_id);
+                const doc = report.doctorObj;
                 return (
                   <div key={report.id} className={`timeline-item ${report.isAiSummarized ? 'ai-item' : ''}`}>
                     <div className="timeline-dot"></div>
