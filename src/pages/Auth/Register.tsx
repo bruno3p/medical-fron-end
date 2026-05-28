@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Stethoscope, HeartPulse, Activity } from 'lucide-react';
+import { PatientService } from '../../services/PatientService';
+import { DoctorService } from '../../services/DoctorService';
 import './Auth.css';
 import bgImage from '../../assets/login-bg.png';
 
@@ -13,9 +15,20 @@ export default function Register() {
 
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate('/app');
+    try {
+      if (role === 'patient') {
+        await PatientService.create({ name, email, password, avatar: 'https://i.pravatar.cc/150?u=' + email } as any);
+      } else {
+        await DoctorService.create({ name, email, password, specialty, avatar: 'https://i.pravatar.cc/150?u=' + email } as any);
+      }
+      alert('Cadastro realizado com sucesso! Faça login.');
+      navigate('/');
+    } catch (err) {
+      alert('Erro ao se conectar com o servidor. Tente novamente.');
+      console.error(err);
+    }
   };
 
   return (

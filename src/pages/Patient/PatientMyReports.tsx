@@ -1,15 +1,33 @@
-import { useState } from 'react';
-import { mockReports, mockDoctors } from '../../mocks/data';
-import type { MedicalReport } from '../../mocks/data';
+import { useState, useEffect } from 'react';
+import { ReportService } from '../../services/ReportService';
+import { DoctorService } from '../../services/DoctorService';
+import type { MedicalReport, Doctor } from '../../mocks/data';
 import { FileText, PlusCircle, Sparkles, UploadCloud, X, Loader2 } from 'lucide-react';
-import './PatientDetails.css'; // Reusing the same CSS for timeline and modals
+import './PatientDetails.css';
 
 export default function PatientMyReports() {
-  // Simular que o paciente 101 está logado
-  const loggedPatientId = 101;
+  const loggedPatientId = Number(localStorage.getItem('loggedUserId')) || 101;
   
-  const initialReports = mockReports.filter(r => r.patient_id === loggedPatientId);
-  const [reports, setReports] = useState<MedicalReport[]>(initialReports);
+  const [loading, setLoading] = useState(true);
+  const [reports, setReports] = useState<(MedicalReport & { doctorObj?: Doctor })[]>([]);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [reps, docs] = await Promise.all([
+          ReportService.getByPatient(loggedPatientId),
+          DoctorService.getAll()
+        ]);
+        setReports(reps.map(r => ({ ...r, doctorObj: docs.find(d => d.id === r.doctor_id) })));
+      } catch (err) {
+        console.error("Erro ao carregar laudos", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [loggedPatientId]);
   
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'extracting' | 'analyzing' | 'done'>('idle');
@@ -30,25 +48,29 @@ export default function PatientMyReports() {
       setUploadStatus('extracting');
       setTimeout(() => {
         setUploadStatus('analyzing');
-        setTimeout(() => {
-          setUploadStatus('done');
+        setTimeout(async () => {
           
-          const newReport: MedicalReport = {
-            id: Date.now(),
-            name: `Documento do Paciente: ${selectedFile.name}`,
-            details: 'Laudo externo enviado pelo paciente e processado pela Inteligência Artificial.',
-            patient_id: loggedPatientId,
-            doctor_id: null, 
-            date: new Date().toISOString().split('T')[0],
-            isAiSummarized: true,
-            originalFileName: selectedFile.name,
-            aiPointsOfAttention: [
-              'Exame sem alterações significativas',
-              'Leve deficiência de vitamina D'
-            ]
-          };
-          
-          setReports([newReport, ...reports]);
+          try {
+            const newReport = await ReportService.create({
+              name: `Documento do Paciente: ${selectedFile.name}`,
+              details: 'Laudo externo enviado pelo paciente e processado pela Inteligência Artificial.',
+              patient_id: loggedPatientId,
+              doctor_id: null, 
+              date: new Date().toISOString().split('T')[0],
+              isAiSummarized: true,
+              originalFileName: selectedFile.name,
+              aiPointsOfAttention: [
+                'Exame sem alterações significativas',
+                'Leve deficiência de vitamina D'
+              ]
+            });
+            
+            setUploadStatus('done');
+            setReports([{ ...newReport, doctorObj: undefined }, ...reports]);
+          } catch (err) {
+            console.error("Erro ao criar laudo", err);
+            alert("Erro ao enviar o laudo para a nuvem.");
+          }
 
           setTimeout(() => {
             setShowUploadModal(false);
@@ -60,6 +82,10 @@ export default function PatientMyReports() {
       }, 1500);
     }, 1000);
   };
+
+  if (loading) {
+    return <div className="flex-center" style={{ height: '50vh' }}><Loader2 className="icon-spin icon-primary" size={40} /></div>;
+  }
 
   return (
     <div className="dashboard-container">
@@ -85,7 +111,7 @@ export default function PatientMyReports() {
             <p className="text-muted">Você ainda não possui laudos enviados.</p>
           ) : (
             reports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(report => {
-              const doc = mockDoctors.find(d => d.id === report.doctor_id);
+              const doc = report.doctorObj;
               return (
                 <div key={report.id} className={`timeline-item ${report.isAiSummarized ? 'ai-item' : ''}`}>
                   <div className="timeline-dot"></div>
